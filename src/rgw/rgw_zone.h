@@ -154,18 +154,29 @@ WRITE_CLASS_ENCODER(RGWSystemMetaObj)
 struct RGWZoneStorageClass {
   boost::optional<rgw_pool> data_pool;
   boost::optional<std::string> compression_type;
+  boost::optional<std::string> endpoint;
+  boost::optional<std::string> dest_bucket;
+  boost::optional<RGWAccessKey> access_key;
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(1, 1, bl);
+    ENCODE_START(2, 1, bl);
     encode(data_pool, bl);
     encode(compression_type, bl);
+    encode(endpoint, bl);
+    encode(dest_bucket, bl);
+    encode(access_key, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(bufferlist::const_iterator& bl) {
-    DECODE_START(1, bl);
+    DECODE_START(2, bl);
     decode(data_pool, bl);
     decode(compression_type, bl);
+    if (struct_v >= 2) {
+      decode(endpoint, bl);
+      decode(dest_bucket, bl);
+      decode(access_key, bl);
+    }
     DECODE_FINISH(bl);
   }
 
@@ -224,7 +235,7 @@ public:
     return m;
   }
 
-  void set_storage_class(const string& sc, const rgw_pool *data_pool, const string *compression_type) {
+  void set_storage_class(const string& sc, const rgw_pool *data_pool, const string *compression_type, const string *endpoint, const string *dest_bucket, const RGWAccessKey *access_key) {
     const string *psc = &sc;
     if (sc.empty()) {
       psc = &RGW_STORAGE_CLASS_STANDARD;
@@ -235,6 +246,15 @@ public:
     }
     if (compression_type) {
       storage_class.compression_type = *compression_type;
+    }
+    if (endpoint) {
+      storage_class.endpoint = *endpoint;
+    }
+    if (dest_bucket) {
+      storage_class.dest_bucket = *dest_bucket;
+    }
+    if (access_key) {
+      storage_class.access_key = *access_key;
     }
   }
 
@@ -303,7 +323,7 @@ struct RGWZonePlacementInfo {
       decode(storage_classes, bl);
     } else {
       storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, &standard_data_pool,
-                                        (!standard_compression_type.empty() ? &standard_compression_type : nullptr));
+                                        (!standard_compression_type.empty() ? &standard_compression_type : nullptr), nullptr, nullptr, nullptr);
     }
     DECODE_FINISH(bl);
   }

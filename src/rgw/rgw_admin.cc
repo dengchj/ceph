@@ -304,6 +304,7 @@ void usage()
   cout << "   --placement-index-type=<type>\n";
   cout << "                             placement target index type (normal, indexless, or #id)\n";
   cout << "   --compression=<type>      placement target compression type (plugin name or empty/none)\n";
+  cout << "   --endpoint=<url>          placement target endpoint for extra storage(url or empty/none)\n";
   cout << "   --tier-type=<type>        zone tier type\n";
   cout << "   --tier-config=<k>=<v>[,...]\n";
   cout << "                             set zone tier config keys, values\n";
@@ -2876,6 +2877,8 @@ int main(int argc, const char **argv)
 
   boost::optional<std::string> compression_type;
 
+  boost::optional<std::string> endpoint;
+
   string totp_serial;
   string totp_seed;
   string totp_seed_type = "hex";
@@ -3190,6 +3193,8 @@ int main(int argc, const char **argv)
       index_type_specified = true;
     } else if (ceph_argparse_witharg(args, i, &val, "--compression", (char*)NULL)) {
       compression_type = val;
+    } else if (ceph_argparse_witharg(args, i, &val, "--endpoint", (char*)NULL)) {
+      endpoint = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--role-name", (char*)NULL)) {
       role_name = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--path", (char*)NULL)) {
@@ -4843,7 +4848,8 @@ int main(int argc, const char **argv)
 	  }
 
           rgw_pool dp = opt_data_pool;
-          info.storage_classes.set_storage_class(storage_class, &dp, compression_type.get_ptr());
+          RGWAccessKey key(access_key, secret_key);
+          info.storage_classes.set_storage_class(storage_class, &dp, compression_type.get_ptr(), endpoint.get_ptr(), &bucket_name, &key);
 
           if (data_extra_pool) {
             info.data_extra_pool = *data_extra_pool;

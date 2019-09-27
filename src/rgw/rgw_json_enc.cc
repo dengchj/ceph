@@ -972,12 +972,24 @@ void RGWZoneStorageClass::dump(Formatter *f) const
   if (compression_type) {
     encode_json("compression_type", compression_type.get(), f);
   }
+  if (endpoint) {
+    encode_json("endpoint", endpoint.get(), f);
+  }
+  if (dest_bucket) {
+    encode_json("dest_bucket", dest_bucket.get(), f);
+  }
+  if (access_key) {
+    encode_json("access_key", access_key.get(), f);
+  }
 }
 
 void RGWZoneStorageClass::decode_json(JSONObj *obj)
 {
   JSONDecoder::decode_json("data_pool", data_pool, obj);
   JSONDecoder::decode_json("compression_type", compression_type, obj);
+  JSONDecoder::decode_json("endpoint", endpoint, obj);
+  JSONDecoder::decode_json("dest_bucket", dest_bucket, obj);
+  JSONDecoder::decode_json("access_key", access_key, obj);
 }
 
 void RGWZoneStorageClasses::dump(Formatter *f) const
@@ -1032,8 +1044,23 @@ void RGWZonePlacementInfo::decode_json(JSONObj *obj)
   if (JSONDecoder::decode_json("data_pool", standard_data_pool, obj)) {
     ppool = &standard_data_pool;
   }
-  if (ppool || pcompression) {
-    storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, ppool, pcompression);
+  string endpoint;
+  string *pendpoint = nullptr;
+  if (JSONDecoder::decode_json("endpoint", endpoint, obj)) {
+    pendpoint = &endpoint;
+  }
+  string dest_bucket;
+  string *pdest_bucket = nullptr;
+  if (JSONDecoder::decode_json("dest_bucket", dest_bucket, obj)) {
+    pdest_bucket = &dest_bucket;
+  }
+  RGWAccessKey access_key;
+  RGWAccessKey *paccess_key = nullptr;
+  if (JSONDecoder::decode_json("access_key", access_key, obj)) {
+    paccess_key = &access_key;
+  }
+  if (ppool || pcompression || pendpoint || pdest_bucket || paccess_key) {
+    storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, ppool, pcompression, pendpoint, pdest_bucket, paccess_key);
   }
 }
 
