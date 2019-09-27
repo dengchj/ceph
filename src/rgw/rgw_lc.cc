@@ -815,12 +815,21 @@ public:
     target_placement.inherit_from(oc.bucket_info.placement_rule);
     target_placement.storage_class = transition.storage_class;
 
-    int r = oc.store->transition_obj(oc.rctx, oc.bucket_info, oc.obj,
-                                     target_placement, o.meta.mtime, o.versioned_epoch);
-    if (r < 0) {
-      ldout(oc.cct, 0) << "ERROR: failed to transition obj (r=" << r << ")" << dendl;
-      return r;
+    if (target_placement.storage_class == "S3") {
+      int r = oc.store->transition_obj_to_extra(oc.bucket_info, oc.obj);
+      if (r < 0) {
+        ldout(oc.cct, 0) << "ERROR: failed to transition obj to extra storagedd(r=" << r << ")" << dendl;
+        return r;
+      }
+    } else {
+      int r = oc.store->transition_obj(oc.rctx, oc.bucket_info, oc.obj,
+                                       target_placement, o.meta.mtime, o.versioned_epoch);
+      if (r < 0) {
+        ldout(oc.cct, 0) << "ERROR: failed to transition obj (r=" << r << ")" << dendl;
+        return r;
+      } 
     }
+
     ldout(oc.cct, 2) << "TRANSITIONED:" << oc.bucket_info.bucket << ":" << o.key << " -> " << transition.storage_class << dendl;
     return 0;
   }

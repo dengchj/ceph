@@ -1652,7 +1652,7 @@ int RGWZoneParams::create(bool exclusive)
     RGWZonePlacementInfo default_placement;
     default_placement.index_pool = name + "." + default_bucket_index_pool_suffix;
     rgw_pool pool = name + "." + default_storage_pool_suffix;
-    default_placement.storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, &pool, nullptr);
+    default_placement.storage_classes.set_storage_class(RGW_STORAGE_CLASS_STANDARD, &pool, nullptr, nullptr, nullptr, nullptr);
     default_placement.data_extra_pool = name + "." + default_storage_extra_pool_suffix;
     placement_pools["default-placement"] = default_placement;
   }

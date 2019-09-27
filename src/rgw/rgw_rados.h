@@ -1978,6 +1978,22 @@ public:
                      const real_time& mtime,
                      uint64_t olh_epoch);
 
+  int transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj);
+
+  int update_index_and_metadata(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info,
+                                rgw_obj &dest_obj,
+                                uint64_t accounted_size,
+                                uint64_t olh_epoch,
+                                std::string& etag,
+                                real_time *mtime, real_time set_mtime,
+                                std::map<std::string, bufferlist>& attrs,
+                                real_time delete_at,
+                                const char *if_match,
+                                const char *if_nomatch,
+                                const std::string *user_data,
+                                const std::optional<rgw_placement_rule>& placement_rule,
+                                rgw_zone_set *zones_trace = nullptr);
+
   int check_bucket_empty(RGWBucketInfo& bucket_info);
 
   /**

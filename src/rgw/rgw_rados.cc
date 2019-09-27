@@ -4849,6 +4849,8 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
 {
   string tag;
   append_rand_alpha(cct, tag, tag, 32);
+  
+  ldout(cct, 0) << __func__<<" obj = " << dest_obj.key.name << dendl;  
 
   rgw::AioThrottle aio(cct->_conf->rgw_put_obj_min_window_size);
   using namespace rgw::putobj;
@@ -4922,6 +4924,8 @@ int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,
   real_time read_mtime;
   uint64_t obj_size;
 
+  ldout(cct, 0) << __func__<<" obj = " << obj.key.name <<" placement_rule:"<<placement_rule.name<<" sc:"<<placement_rule.storage_class<< dendl;
+
   RGWRados::Object op_target(this, bucket_info, obj_ctx, obj);
   RGWRados::Object::Read read_op(&op_target);
 
@@ -4956,6 +4960,188 @@ int RGWRados::transition_obj(RGWObjectCtx& obj_ctx,
   }
 
   return 0;
+}
+
+int RGWRados::update_index_and_metadata(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info,
+                                        rgw_obj &dest_obj,
+                                        uint64_t accounted_size,
+                                        uint64_t olh_epoch,
+                                        std::string& etag,
+                                        real_time *mtime, real_time set_mtime,
+                                        std::map<std::string, bufferlist>& attrs,
+                                        real_time delete_at,
+                                        const char *if_match,
+                                        const char *if_nomatch,
+                                        const std::string *user_data,
+                                        const std::optional<rgw_placement_rule>& placement_rule,
+                                        rgw_zone_set *zones_trace)
+{
+  std::string tag;
+  append_rand_alpha(cct, tag, tag, 32);
+
+  rgw::AioThrottle aio(cct->_conf->rgw_put_obj_min_window_size);
+  const rgw_placement_rule *ptail_rule = (placement_rule ? &(*placement_rule) : nullptr);
+  rgw::putobj::AtomicObjectProcessor processor(&aio, this, bucket_info, ptail_rule, bucket_info.owner,
+                                  obj_ctx, dest_obj, olh_epoch, tag);
+
+  int ret = processor.prepare();
+  if (ret < 0)
+    return ret;
+
+  return processor.complete(accounted_size, etag, mtime, set_mtime, attrs, delete_at,
+                            if_match, if_nomatch, user_data, zones_trace, nullptr);
+}
+
+int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj)
+{
+  std::map<std::string, bufferlist> attrset;
+  uint64_t obj_size;
+  real_time mtime;
+  RGWObjectCtx rctx(this);
+
+  RGWRados::Object read_obj(this, bucket_info, rctx, obj);
+  RGWRados::Object::Read read_op(&read_obj);
+
+  read_op.params.attrs = &attrset;
+  read_op.params.obj_size = &obj_size;
+  read_op.params.lastmod = &mtime;
+
+  int ret = read_op.prepare();
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " read_op.prepare failed, ret = " << ret << dendl;
+    return ret;
+  }
+
+  off_t ofs = 0;
+  off_t end = obj_size - 1;
+  bufferlist bl;
+  do {
+    bufferlist read_part;
+    int read_len = read_op.read(ofs, end, read_part);
+
+    if (read_len < 0) {
+      ldout(cct, 0) << __func__ << " read_op.read failed, ret = " << read_len << dendl;
+      return read_len;
+    }
+
+    ofs += read_len;
+    bl.append(read_part);
+  } while (ofs <= end);
+
+  std::string placement_id;
+  const std::optional<rgw_placement_rule> placement_rule;
+  bool is_exist = false;
+  const auto& zonegroup = this->svc.zone->get_zonegroup();
+  //auto placement_target = zonegroup.find()
+  for (const auto& target : zonegroup.placement_targets) {
+    if (target.second.name == "S3") {
+      placement_id = target.second.name;
+      is_exist = true;
+      break;
+    }
+  }
+  if (!is_exist) {
+    ldout(cct, 0) << __func__ << " placement type (S3) does not exist "
+                  << "in the placement targets of zonegroup ("
+                  << this->svc.zone->get_zonegroup().api_name << ")" << dendl;
+    return -EINVAL;
+  }
+
+  const std::map<string, RGWZonePlacementInfo> &zone_placement_pools = this->svc.zone->get_zone_params().placement_pools;
+  auto placement_iter = zone_placement_pools.find(placement_id);
+  if (placement_iter == zone_placement_pools.end()) {
+    ldout(cct, 0) << __func__ << " placement id (" << placement_id
+                  << ") doesn't exist in the placement pools of zone"
+                  << " (" << this->svc.zone->zone_name() << ")" << dendl;
+    return -EINVAL;
+  }
+
+  //TODO
+
+  RGWZonePlacementInfo placement_info = placement_iter->second;
+  const RGWZoneStorageClass *storage_class = nullptr;
+  if (!placement_info.storage_classes.find("S3", &storage_class)) {
+    ldout(cct, 0) << __func__ << " S3 Storage class"
+                  << " doesn't exist in the placement"
+                  << " (" << placement_iter->first << ")" << dendl;
+    return -EINVAL;
+  }
+
+  if (!storage_class->endpoint || !storage_class->dest_bucket || !storage_class->access_key) {
+    return -EPERM;
+  }
+
+  RGWRESTStreamS3PutObj req(cct, "PUT", *storage_class->endpoint, nullptr, nullptr, PathStyle);
+
+  RGWAccessKey key(*storage_class->access_key);
+  if (key.id.empty()) {
+    ldout(cct, 0) << __func__ << " s3 access key is empty." << dendl;
+    return -EPERM;
+  }
+
+  if (key.key.empty()) {
+    ldout(cct, 0) << __func__ << " s3 secret key is empty." << dendl;
+    return -EPERM;
+  }
+
+  obj.bucket.name = *storage_class->dest_bucket;
+
+  auto aiter = attrset.find(RGW_ATTR_STORAGE_CLASS);
+  if (aiter != attrset.end()) {
+    bufferlist pt;
+    encode("S3", pt);
+    attrset[RGW_ATTR_STORAGE_CLASS] = pt;
+  }
+
+  bool send = true;
+  ret = req.put_obj_init(key, obj, bl.length(), attrset, send);
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " put_obj_init failed, ret = " << cpp_strerror(-ret)
+                  << dendl;
+    return ret;
+  }
+
+  // load buffer
+  ret = req.get_out_cb()->handle_data(bl, 0, ((uint64_t)bl.length()));
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " get_out_cb()->handle_data() failed, ret = "
+                  << cpp_strerror(-ret) << dendl;
+    return ret;
+  }
+
+  std::string etag;
+  aiter = attrset.find(RGW_ATTR_ETAG);
+  if (aiter != attrset.end()) {
+    bufferlist& tmp = aiter->second;
+    etag = string(tmp.c_str(), tmp.length());
+  }
+
+  ret = req.complete_request(&etag, nullptr, nullptr, nullptr, nullptr) ;
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " complete() failed, ret = " << cpp_strerror(-ret)
+                  << dendl;
+    return ret;
+  }
+
+  uint64_t accounted_size;
+  bool compressed = false;
+  RGWCompressionInfo cs_info;
+  ret = rgw_compression_info_from_attrset(attrset, compressed, cs_info);
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " ERROR: failed to read compression info" << dendl;
+    return ret;
+  }
+  accounted_size = compressed ? cs_info.orig_size : ofs;
+
+  ret = update_index_and_metadata(rctx, bucket_info, obj, accounted_size, 0, etag, nullptr, mtime, attrset,
+                    real_time(), nullptr, nullptr, nullptr, placement_rule);
+  if (ret < 0) {
+    ldout(cct, 0) << __func__ << " ERROR: update bucket index and object meta failed, ret = "
+                  << ret << dendl;
+    return ret;
+  }
+
+  return ret;
 }
 
 int RGWRados::check_bucket_empty(RGWBucketInfo& bucket_info)
