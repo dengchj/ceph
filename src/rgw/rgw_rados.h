@@ -1978,7 +1978,7 @@ public:
                      const real_time& mtime,
                      uint64_t olh_epoch);
 
-  int transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj);
+  int transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj, const rgw_placement_rule& placement_rule);
 
   int update_index_and_metadata(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info,
                                 rgw_obj &dest_obj,

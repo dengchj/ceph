@@ -4992,7 +4992,7 @@ int RGWRados::update_index_and_metadata(RGWObjectCtx& obj_ctx, RGWBucketInfo& bu
                             if_match, if_nomatch, user_data, zones_trace, nullptr);
 }
 
-int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj)
+int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj, const rgw_placement_rule& placement_rule)
 {
   std::map<std::string, bufferlist> attrset;
   uint64_t obj_size;
@@ -5028,40 +5028,24 @@ int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj)
     bl.append(read_part);
   } while (ofs <= end);
 
-  std::string placement_id;
-  const std::optional<rgw_placement_rule> placement_rule;
-  bool is_exist = false;
-  const auto& zonegroup = this->svc.zone->get_zonegroup();
-  //auto placement_target = zonegroup.find()
-  for (const auto& target : zonegroup.placement_targets) {
-    if (target.second.name == "S3") {
-      placement_id = target.second.name;
-      is_exist = true;
-      break;
-    }
-  }
-  if (!is_exist) {
-    ldout(cct, 0) << __func__ << " placement type (S3) does not exist "
-                  << "in the placement targets of zonegroup ("
-                  << this->svc.zone->get_zonegroup().api_name << ")" << dendl;
-    return -EINVAL;
-  }
-
   const std::map<string, RGWZonePlacementInfo> &zone_placement_pools = this->svc.zone->get_zone_params().placement_pools;
-  auto placement_iter = zone_placement_pools.find(placement_id);
+  auto placement_iter = zone_placement_pools.find(placement_rule.name);
+  ldout(cct, 10) << __func__ << " placement name:" << placement_rule.name
+                  << " placement_rule.sc:" << placement_rule.storage_class << dendl;
   if (placement_iter == zone_placement_pools.end()) {
-    ldout(cct, 0) << __func__ << " placement id (" << placement_id
+    ldout(cct, 0) << __func__ << " ERROR: placement rule (" << placement_rule.name
                   << ") doesn't exist in the placement pools of zone"
                   << " (" << this->svc.zone->zone_name() << ")" << dendl;
     return -EINVAL;
   }
-
-  //TODO
-
+  
   RGWZonePlacementInfo placement_info = placement_iter->second;
+  for (auto sc : placement_info.storage_classes.get_all())
+    ldout(cct, 0) << __func__ << " sc:" << sc.first << dendl;
   const RGWZoneStorageClass *storage_class = nullptr;
-  if (!placement_info.storage_classes.find("S3", &storage_class)) {
-    ldout(cct, 0) << __func__ << " S3 Storage class"
+  if (!placement_info.storage_classes.find(placement_rule.storage_class, &storage_class)) {
+    ldout(cct, 0) << __func__ << " Transition storage class "
+                  << placement_rule.storage_class
                   << " doesn't exist in the placement"
                   << " (" << placement_iter->first << ")" << dendl;
     return -EINVAL;
@@ -5070,6 +5054,10 @@ int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj)
   if (!storage_class->endpoint || !storage_class->dest_bucket || !storage_class->access_key) {
     return -EPERM;
   }
+
+  ldout(cct, 10) << __func__ << " storage_class->endpoint:" << *storage_class->endpoint
+                  << " storage_class->dest_bucket:" << *storage_class->dest_bucket<< " storage_class->access_key:" << (*storage_class->access_key).id
+                  <<dendl;
 
   RGWRESTStreamS3PutObj req(cct, "PUT", *storage_class->endpoint, nullptr, nullptr, PathStyle);
 
@@ -5108,6 +5096,10 @@ int RGWRados::transition_obj_to_extra(RGWBucketInfo& bucket_info, rgw_obj& obj)
                   << cpp_strerror(-ret) << dendl;
     return ret;
   }
+
+//TEST
+  //std::map<string, std::string> extra_headers;
+  //ret = req.send_request(key, extra_headers, obj, nullptr);
 
   std::string etag;
   aiter = attrset.find(RGW_ATTR_ETAG);

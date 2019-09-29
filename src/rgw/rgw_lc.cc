@@ -17,8 +17,10 @@
 #include "rgw_bucket.h"
 #include "rgw_lc.h"
 #include "rgw_string.h"
+#include "rgw_zone.h"
 
 #include "services/svc_sys_obj.h"
+#include "services/svc_zone.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -811,14 +813,22 @@ public:
   int process(lc_op_ctx& oc) {
     auto& o = oc.o;
 
+//TEST
+ const auto &zg = oc.store->svc.zone->get_zonegroup();
+ for (auto pt : zg.placement_targets) {
+   ldout(oc.cct, 0) << __func__ << " pt:"<<pt.first<<dendl;
+   for (auto sc : pt.second.storage_classes)
+     ldout(oc.cct, 0) << __func__ << " sc:"<<sc<<dendl;
+  }
+
     rgw_placement_rule target_placement;
     target_placement.inherit_from(oc.bucket_info.placement_rule);
     target_placement.storage_class = transition.storage_class;
 
     if (target_placement.storage_class == "S3") {
-      int r = oc.store->transition_obj_to_extra(oc.bucket_info, oc.obj);
+      int r = oc.store->transition_obj_to_extra(oc.bucket_info, oc.obj, target_placement);
       if (r < 0) {
-        ldout(oc.cct, 0) << "ERROR: failed to transition obj to extra storagedd(r=" << r << ")" << dendl;
+        ldout(oc.cct, 0) << "ERROR: failed to transition obj to extra storage (r=" << r << ")" << dendl;
         return r;
       }
     } else {
