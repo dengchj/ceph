@@ -809,6 +809,7 @@ int RGWRESTStreamRWRequest::complete_request(string *etag,
 {
   int ret = wait();
   if (ret < 0) {
+    ldout(cct, 0) << __func__<<" ret:" << ret << dendl;
     return ret;
   }
 
@@ -866,6 +867,9 @@ int RGWRESTStreamRWRequest::complete_request(string *etag,
   if (pheaders) {
     *pheaders = std::move(out_headers);
   }
+
+  ldout(cct, 0) << __func__<<" status:" << status << dendl;
+
   return status;
 }
 
