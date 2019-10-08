@@ -813,14 +813,6 @@ public:
   int process(lc_op_ctx& oc) {
     auto& o = oc.o;
 
-//TEST
- const auto &zg = oc.store->svc.zone->get_zonegroup();
- for (auto pt : zg.placement_targets) {
-   ldout(oc.cct, 0) << __func__ << " pt:"<<pt.first<<dendl;
-   for (auto sc : pt.second.storage_classes)
-     ldout(oc.cct, 0) << __func__ << " sc:"<<sc<<dendl;
-  }
-
     rgw_placement_rule target_placement;
     target_placement.inherit_from(oc.bucket_info.placement_rule);
     target_placement.storage_class = transition.storage_class;

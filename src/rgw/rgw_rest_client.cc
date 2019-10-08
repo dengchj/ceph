@@ -311,7 +311,6 @@ int RGWRESTSimpleRequest::forward_request(RGWAccessKey& key, req_info& info, siz
     new_resource.append(resource);
   }
   new_url.append(new_resource + params_str);
-  ldout(cct, 0) <<__func__<<" url:"<<url<<" new_url:"<<new_url<<" new_resource:"<<new_resource<<" resource:"<<resource<<" params_str:"<<params_str<<dendl;
 
   bufferlist::iterator bliter;
 
@@ -572,8 +571,6 @@ void RGWRESTStreamS3PutObj::send_init(rgw_obj& obj)
     resource_str = obj.bucket.name + "/" + obj.get_oid();
   }
 
-  ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" resource_str:"<<resource_str<<dendl;
-
   //do not encode slash in object key name
   url_encode(resource_str, resource, false);
 
@@ -584,8 +581,6 @@ void RGWRESTStreamS3PutObj::send_init(rgw_obj& obj)
   headers_gen.init(method, new_url, resource, params);
 
   url = headers_gen.get_url();
-
-  ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" resource_str:"<<resource_str<<dendl;
 }
 
 int RGWRESTStreamS3PutObj::send_ready(RGWAccessKey& key, map<string, bufferlist>& rgw_attrs, bool send)
@@ -717,7 +712,7 @@ int RGWRESTStreamRWRequest::do_send_prepare(RGWAccessKey *key, map<string, strin
   string new_resource;
   string bucket_name;
   string old_resource = resource;
-ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" new_resource_str:"<<new_resource<<dendl;
+
   if (resource[0] == '/') {
     new_resource = resource.substr(1);
   } else {
@@ -740,7 +735,7 @@ ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" new_resource_str:"
       new_resource = new_resource.substr(pos+1);
     }
   }
-ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" new_resource:"<<new_resource<<dendl;
+
   RGWRESTGenerateHTTPHeaders headers_gen(cct, &new_env, &new_info);
 
   headers_gen.init(method, new_url, new_resource, params);
@@ -772,7 +767,7 @@ ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" new_resource:"<<ne
 
   method = new_info.method;
   url = headers_gen.get_url();
-ldout(cct,0)<<__func__<<" url:"<<url<<" new_url:"<<new_url<<" resource:"<<resource<<dendl;
+ 
   return 0;
 }
 
@@ -809,7 +804,6 @@ int RGWRESTStreamRWRequest::complete_request(string *etag,
 {
   int ret = wait();
   if (ret < 0) {
-    ldout(cct, 0) << __func__<<" ret:" << ret << dendl;
     return ret;
   }
 
@@ -867,9 +861,6 @@ int RGWRESTStreamRWRequest::complete_request(string *etag,
   if (pheaders) {
     *pheaders = std::move(out_headers);
   }
-
-  ldout(cct, 0) << __func__<<" status:" << status << dendl;
-
   return status;
 }
 
